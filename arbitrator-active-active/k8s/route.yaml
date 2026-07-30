@@ -1,0 +1,14 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: fis-arbitrator-active-active
+  namespace: open-cluster-management
+spec:
+  tls:
+    termination: edge
+  to:
+    kind: Service
+    name: fis-arbitrator-active-active
+    weight: 100
+  port:
+    targetPort: http

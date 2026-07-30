@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fis-arbitrator-active-active
+  namespace: open-cluster-management
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fis-arbitrator-active-active
+rules:
+  - apiGroups: ["cluster.open-cluster-management.io"]
+    resources: ["managedclusters"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["addon.open-cluster-management.io"]
+    resources: ["managedclusteraddons"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["submariner.io"]
+    resources: ["gateways", "clusters", "endpoints"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fis-arbitrator-active-active
+subjects:
+  - kind: ServiceAccount
+    name: fis-arbitrator-active-active
+    namespace: open-cluster-management
+roleRef:
+  kind: ClusterRole
+  name: fis-arbitrator-active-active
+  apiGroup: rbac.authorization.k8s.io

@@ -1,6 +1,8 @@
-# FIS dual-site payment demo — how it works
+# FIS dual-site payment demo — how it works (active-passive)
 
-This lab shows **two independent payment sites** (not one stretched Akka cluster) on OpenShift, with **ACM as a third-site arbitrator** for active/standby, and **Kafka + MirrorMaker 2** for async transaction sync.
+This lab shows **two independent payment sites** (not one stretched Akka cluster) on OpenShift, with **ACM as a third-site arbitrator** for **active/standby**, and **Kafka + MirrorMaker 2** for async transaction sync.
+
+For the parallel **active-active** stack (both sites accept traffic + payer affinity), see [ACTIVE-ACTIVE.md](./ACTIVE-ACTIVE.md).
 
 ```text
 Active site accepts payments → Kafka events → MM2 mirrors to standby

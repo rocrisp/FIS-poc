@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fis-aa-arbitrator-config
+  namespace: open-cluster-management
+data:
+  config.yaml: |
+    server:
+      port: 8080
+    priority:
+      - cluster1-fis
+      - cluster2-fis
+    submariner:
+      pollInterval: 10s
+      stabilizationPeriod: 30s
+    persistence:
+      backend: memory

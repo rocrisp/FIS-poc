@@ -1,62 +1,64 @@
-# FIS-poc — dual-site payment active/standby demo
+# FIS-poc — dual-site payment demos
 
-Two independent payment sites (`cluster1-fis`, `cluster2-fis`) connected by Submariner, with:
+Two independent payment sites (`cluster1-fis`, `cluster2-fis`) connected by Submariner, with an ACM hub arbitrator and Kafka + MirrorMaker 2.
 
-1. **ACM arbitrator** (hub / `rose-fis`) — picks **active** vs **standby** when the mesh fails  
-2. **Kafka + MirrorMaker 2** — async event sync (`payment-instructions`, `payment-lifecycle`)  
-3. **payment-hub-demo** — accepts payments only when `acceptTraffic=true`
+This repo has **two parallel demos**:
 
-**Architecture (Mermaid + tech map):** [docs/ARCHITECTURE-README.md](docs/ARCHITECTURE-README.md)
+| Mode | Stack | Behavior |
+|------|-------|----------|
+| **Active-passive** (original) | `akka-split-brain-arbitrator` + `payment-hub-demo` | One site accepts payments; peer is standby |
+| **Active-active** (new) | `arbitrator-active-active` + `payment-hub-active-active` | Both healthy sites accept; **payer affinity** avoids double-spend |
+
+Active-active details: [docs/ACTIVE-ACTIVE.md](docs/ACTIVE-ACTIVE.md)  
+Architecture (Mermaid + tech map): [docs/ARCHITECTURE-README.md](docs/ARCHITECTURE-README.md)
 
 ```text
                     rose-fis (ACM hub)
-                 akka-split-brain-arbitrator
+         AP arbitrator              AA arbitrator
                     /                  \
                    /                    \
           cluster1-fis                 cluster2-fis
-          role=active                  role=standby
-          payment-hub + Kafka   <---MM2--->  payment-hub + Kafka
+          payment-hub (+ aa)    <---MM2--->  payment-hub (+ aa)
+          + Kafka                              + Kafka
 ```
 
 ## Repo layout
 
 | Path | Purpose |
 |------|---------|
-| `akka-split-brain-arbitrator/` | Hub status API + simulation GUI + Submariner/ManagedCluster monitor |
-| `payment-hub-demo/` | Per-site payment API + ACTIVE/STANDBY dashboard |
-| `docs/ARCHITECTURE-README.md` | How it works — technologies + Mermaid diagrams |
-| `docs/KAFKA-MIRRORMAKER2.md` | Kafka listeners, MM2 replication, peer-down behavior |
-| `docs/EDGE-CASES.md` | Edge-case test checklist for demo / QA |
-| `docs/arbitrator-api-for-payment-hub.md` | Arbitrator APIs payment hubs can query |
-| `demo-test-console/` | Optional local curl-based checks (prefer hub/site GUIs) |
-| `k8s/cluster1-fis/kafka/` | Active-site Kafka/MM2 (SNO-sized) |
-| `k8s/cluster2-fis/kafka/` | Standby-site Kafka/MM2 |
-| `k8s/acm/` | ACM/Hive provisioning references |
-| `scripts/` | Deploy helpers |
+| `akka-split-brain-arbitrator/` | **Active-passive** hub API + simulation GUI |
+| `payment-hub-demo/` | **Active-passive** per-site payment UI |
+| `arbitrator-active-active/` | **Active-active** hub API + simulation GUI |
+| `payment-hub-active-active/` | **Active-active** payment UI + account affinity |
+| `docs/ACTIVE-ACTIVE.md` | AA behavior, affinity, deploy |
+| `docs/ARCHITECTURE-README.md` | How the AP stack works (diagrams) |
+| `docs/KAFKA-MIRRORMAKER2.md` | Kafka listeners, MM2 replication |
+| `docs/EDGE-CASES.md` | Edge-case checklist (AP) |
+| `docs/arbitrator-api-for-payment-hub.md` | Arbitrator APIs |
+| `k8s/cluster1-fis/kafka/`, `k8s/cluster2-fis/kafka/` | Shared Kafka/MM2 |
+| `scripts/` | Deploy helpers (`*-aa.sh` for active-active) |
 
-## Deploy order
+---
+
+## Active-passive deploy (original)
 
 ```bash
-# 0) Kubeconfigs
 export HUB_KUBECONFIG=~/Downloads/rose-fis-kubeconfig.yaml
 export CLUSTER1_KUBECONFIG=~/Downloads/cluster1-fis-kubeconfig.yaml
 export CLUSTER2_KUBECONFIG=~/Downloads/cluster2-fis-kubeconfig.yaml
 
-# 1) Arbitrator on hub
 ./scripts/deploy-arbitrator.sh
 export ARBITRATOR_URL="https://$(oc --kubeconfig "$HUB_KUBECONFIG" -n open-cluster-management get route akka-split-brain-arbitrator -o jsonpath='{.spec.host}')"
 
-# 2) Kafka on both sites
 ./scripts/deploy-kafka-site.sh cluster1-fis
 ./scripts/deploy-kafka-site.sh cluster2-fis
 ./scripts/wire-mirrormaker2.sh
 
-# 3) Payment hubs
 ./scripts/deploy-payment-hub.sh cluster1-fis
 ./scripts/deploy-payment-hub.sh cluster2-fis
 ```
 
-## Live demo endpoints (lab)
+### AP lab URLs
 
 | Component | URL |
 |-----------|-----|
@@ -64,38 +66,14 @@ export ARBITRATOR_URL="https://$(oc --kubeconfig "$HUB_KUBECONFIG" -n open-clust
 | Active payment-hub | `https://payment-hub-payment-hub.apps.cluster1-fis.opdev.io` |
 | Standby payment-hub | `https://payment-hub-payment-hub.apps.cluster2-fis.opdev.io` |
 
-## Demo checks (GUI)
+### AP failover walkthrough
 
-Open these in a browser:
+1. Confirm cluster1 **ACTIVE**, cluster2 **STANDBY**; pay on cluster1.
+2. Hub GUI: **Mark cluster1 unreachable**.
+3. cluster2 becomes **ACTIVE**; pay on cluster2.
+4. Hub GUI: **Clear (live signals)** to restore priority active on cluster1.
 
-1. **Hub arbitrator** — overview + simulation controls  
-   `https://akka-split-brain-arbitrator-open-cluster-management.apps.rose-fis.opdev.io/`
-2. **cluster1 payment hub** — big ACTIVE/STANDBY + payment form  
-   `https://payment-hub-payment-hub.apps.cluster1-fis.opdev.io/`
-3. **cluster2 payment hub** — same UI on the peer site  
-   `https://payment-hub-payment-hub.apps.cluster2-fis.opdev.io/`
-
-### Failover walkthrough
-
-1. Confirm cluster1 is **ACTIVE**, cluster2 **STANDBY**; submit a payment on cluster1.
-2. On the hub GUI: **Mark cluster1 unreachable**.
-3. Within a few seconds cluster2 becomes **ACTIVE**, cluster1 **UNREACHABLE**.
-4. Submit a payment on cluster2; cluster1 form stays disabled / refuses.
-5. Hub GUI: **Clear (live signals)** to restore priority active on cluster1.
-
-### API (optional)
-
-```bash
-curl -sk "$ARBITRATOR_URL/api/v1/overview" | jq .
-curl -sk -X PUT "$ARBITRATOR_URL/api/v1/simulation" \
-  -H 'Content-Type: application/json' \
-  -d '{"mode":"unreachable","target":"cluster1-fis"}' | jq .
-curl -sk -X PUT "$ARBITRATOR_URL/api/v1/simulation" \
-  -H 'Content-Type: application/json' \
-  -d '{"mode":"none"}' | jq .
-```
-
-## Roles
+### AP roles
 
 | Role | Meaning |
 |------|---------|
@@ -103,8 +81,31 @@ curl -sk -X PUT "$ARBITRATOR_URL/api/v1/simulation" \
 | `standby` | Healthy, replicate events, refuse new payments |
 | `unreachable` | Hub cannot reach that managed cluster API |
 
+---
+
+## Active-active deploy (parallel)
+
+Kafka/MM2 from above can be reused. AA apps use different namespaces/routes and do not replace AP.
+
+```bash
+./scripts/deploy-arbitrator-aa.sh
+export ARBITRATOR_AA_URL="https://$(oc --kubeconfig "$HUB_KUBECONFIG" -n open-cluster-management get route fis-arbitrator-active-active -o jsonpath='{.spec.host}')"
+
+ARBITRATOR_URL="$ARBITRATOR_AA_URL" ./scripts/deploy-payment-hub-aa.sh cluster1-fis
+ARBITRATOR_URL="$ARBITRATOR_AA_URL" ./scripts/deploy-payment-hub-aa.sh cluster2-fis
+```
+
+### AA affinity (payer `from`)
+
+- **a–m** → home `cluster1-fis` (e.g. `alice`, `bob`)
+- **n–z** → home `cluster2-fis` (e.g. `nancy`, `oscar`)
+
+Wrong home → HTTP 409 even when the site is active. See [docs/ACTIVE-ACTIVE.md](docs/ACTIVE-ACTIVE.md).
+
+---
+
 ## Notes
 
-- Payment hubs skip TLS verify against the hub OpenShift Route (`ARBITRATOR_INSECURE_SKIP_VERIFY=true`) for lab certs.
-- MM2 uses `DefaultReplicationPolicy`: mirrored topics appear as `cluster1-fis.payment-instructions` (etc.) on the peer. Topic regexes are anchored so bidirectional MM2 cannot loop.
+- Payment hubs skip TLS verify against hub OpenShift Routes (`ARBITRATOR_INSECURE_SKIP_VERIFY=true`) for lab certs.
+- MM2 uses `DefaultReplicationPolicy`: mirrored topics appear as `cluster1-fis.payment-instructions` (etc.) on the peer.
 - Strimzi install rewrites upstream `myproject` RoleBinding subjects to `kafka`.

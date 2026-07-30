@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-hub-aa
+  namespace: payment-hub-aa
+  labels:
+    app: payment-hub-aa
+    fis.demo/mode: active-active
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-hub-aa
+  template:
+    metadata:
+      labels:
+        app: payment-hub-aa
+        fis.demo/mode: active-active
+    spec:
+      containers:
+        - name: payment-hub-aa
+          image: image-registry.openshift-image-registry.svc:5000/payment-hub-aa/payment-hub-aa:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: CLUSTER_NAME
+              value: "CLUSTER_NAME_PLACEHOLDER"
+            - name: PEER_CLUSTER
+              value: "PEER_CLUSTER_PLACEHOLDER"
+            - name: ARBITRATOR_URL
+              value: "https://fis-arbitrator-active-active-open-cluster-management.apps.rose-fis.opdev.io"
+            - name: KAFKA_BOOTSTRAP
+              value: "kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092"
+            - name: LISTEN_ADDR
+              value: ":8080"
+            - name: ARBITRATOR_POLL
+              value: "5s"
+            - name: ARBITRATOR_INSECURE_SKIP_VERIFY
+              value: "true"
+            - name: STARTING_BALANCE
+              value: "1000"
+            - name: DEMO_MODE
+              value: "active-active"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-hub-aa
+  namespace: payment-hub-aa
+spec:
+  selector:
+    app: payment-hub-aa
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: payment-hub-aa
+  namespace: payment-hub-aa
+spec:
+  tls:
+    termination: edge
+  to:
+    kind: Service
+    name: payment-hub-aa
+    weight: 100
+  port:
+    targetPort: http

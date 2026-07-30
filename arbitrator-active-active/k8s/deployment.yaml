@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fis-arbitrator-active-active
+  namespace: open-cluster-management
+  labels:
+    app: fis-arbitrator-active-active
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fis-arbitrator-active-active
+  template:
+    metadata:
+      labels:
+        app: fis-arbitrator-active-active
+    spec:
+      serviceAccountName: fis-arbitrator-active-active
+      containers:
+        - name: arbitrator
+          image: image-registry.openshift-image-registry.svc:5000/open-cluster-management/fis-arbitrator-active-active:latest
+          imagePullPolicy: Always
+          args:
+            - -config=/etc/arbitrator/config.yaml
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: CONFIG_PATH
+              value: /etc/arbitrator/config.yaml
+            - name: CLUSTER_NAMES
+              value: "cluster1-fis,cluster2-fis"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/arbitrator
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: fis-aa-arbitrator-config
