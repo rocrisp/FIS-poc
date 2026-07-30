@@ -35,16 +35,6 @@ Architecture (Mermaid + tech map): [docs/ARCHITECTURE-README.md](docs/ARCHITECTU
 
 ---
 
-```text
-                    rose-fis (ACM hub)
-         AP arbitrator              AA arbitrator
-                    /                  \
-                   /                    \
-          cluster1-fis                 cluster2-fis
-          payment-hub (+ aa)    <---MM2--->  payment-hub (+ aa)
-          + Kafka                              + Kafka
-```
-
 ## Repo layout
 
 | Path | Purpose |
