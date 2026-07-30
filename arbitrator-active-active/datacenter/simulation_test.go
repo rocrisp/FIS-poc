@@ -51,3 +51,26 @@ func TestSimulationPartitionKeepsBothActive(t *testing.T) {
 		t.Fatalf("unexpected c2: %+v", c2)
 	}
 }
+
+func TestSimulationHubDownCluster1SoleActive(t *testing.T) {
+	r := NewPriorityResolver([]string{"cluster1-fis", "cluster2-fis"})
+	r.UpdateReachability("cluster1-fis", true)
+	r.UpdateReachability("cluster2-fis", true)
+	r.UpdateSubmarinerStatus(true)
+
+	if err := r.SetSimulation(SimHubDown, ""); err != nil {
+		t.Fatal(err)
+	}
+	c1 := r.Resolve("cluster1-fis")
+	c2 := r.Resolve("cluster2-fis")
+	if c1.Role != RoleActive || !c1.AcceptTraffic || !c1.SoleActive {
+		t.Fatalf("cluster1 should be sole active, got %+v", c1)
+	}
+	if c2.Role != RoleStandby || c2.AcceptTraffic {
+		t.Fatalf("cluster2 should be standby, got %+v", c2)
+	}
+	ov := r.Snapshot()
+	if ov.SoleActiveSite != "cluster1-fis" || ov.WriteMode != "sole-active" {
+		t.Fatalf("overview: sole=%s mode=%s", ov.SoleActiveSite, ov.WriteMode)
+	}
+}

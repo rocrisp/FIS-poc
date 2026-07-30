@@ -18,17 +18,18 @@
   <main>
     <section class="panel">
       <h2>Site roles</h2>
-      <p class="lede">Both reachable sites stay <code>active</code> with <code>acceptTraffic=true</code>. Unreachable sites are fenced. Mesh-down is degraded sync, not single-active.</p>
+      <p class="lede">Both reachable sites stay <code>active</code>. Mesh-down keeps both active (sync may lag). Hub-down makes only cluster1 sole active.</p>
       <div class="sites" id="sites"></div>
       <dl class="facts" id="facts"></dl>
     </section>
 
     <section class="panel controls">
       <h2>Simulation</h2>
-      <p class="lede">Demo fencing without touching Submariner. Payment hubs keep polling and honor <code>acceptTraffic</code>.</p>
+      <p class="lede">Mesh-down ≠ hub-down. Use <strong>Hub unreachable</strong> to force cluster1-only writes.</p>
       <div class="actions">
         <button type="button" data-mode="none">Clear (live signals)</button>
-        <button type="button" data-mode="partition">Submariner mesh down</button>
+        <button type="button" data-mode="partition">Submariner mesh down (both stay active)</button>
+        <button type="button" data-mode="hub-down">Hub unreachable → cluster1 sole active</button>
         <button type="button" data-mode="unreachable" data-target="cluster1-fis">Mark cluster1 unreachable</button>
         <button type="button" data-mode="unreachable" data-target="cluster2-fis">Mark cluster2 unreachable</button>
       </div>

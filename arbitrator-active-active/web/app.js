@@ -9,7 +9,7 @@
   let lastTrafficSig = "";
 
   function roleClass(role) {
-    if (role === "active" || role === "standby" || role === "unreachable") return role;
+    if (role === "active" || role === "standby" || role === "unreachable") return role; // standby used for hub-down peer
     return "unknown";
   }
 
@@ -22,8 +22,10 @@
         : mode === "unreachable"
           ? `mode: unreachable (${sim.target || "?"})`
           : mode === "partition"
-            ? "mode: Submariner mesh down"
-            : `mode: ${mode}`;
+            ? "mode: Submariner mesh down (both active)"
+            : mode === "hub-down"
+              ? "mode: hub unreachable → cluster1 sole"
+              : `mode: ${mode}`;
     simNote.textContent = sim.note || "";
 
     sitesEl.innerHTML = "";

@@ -9,6 +9,7 @@ import (
 // Role values for active-active HA.
 const (
 	RoleActive      = "active"      // accepts traffic (both sites when healthy)
+	RoleStandby     = "standby"     // healthy but not accepting (hub-down fallback on non-primary)
 	RoleUnreachable = "unreachable" // hub cannot reach this managed cluster — fenced
 )
 
@@ -17,6 +18,7 @@ const (
 	SimNone        = "none"
 	SimPartition   = "partition"   // mesh down; both sites still active if reachable
 	SimUnreachable = "unreachable" // one site fenced; peer stays active
+	SimHubDown     = "hub-down"    // payment hubs lose referee → only fallbackActive (cluster1) accepts
 )
 
 type DatacenterStatus struct {
@@ -119,10 +121,21 @@ func (r *ActiveActiveResolver) SetSimulation(mode, target string) error {
 		r.sim = Simulation{
 			Mode:      SimPartition,
 			UpdatedAt: time.Now().UTC(),
-			Note:      "Submariner mesh down; both reachable sites still accept traffic (sync may lag)",
+			Note:      "Submariner mesh down; both sites stay active (sync may lag). This is NOT hub-down.",
 		}
 		if r.partitionSince.IsZero() {
 			r.partitionSince = time.Now()
+		}
+		return nil
+	case SimHubDown:
+		fallback := ""
+		if len(r.sites) > 0 {
+			fallback = r.sites[0]
+		}
+		r.sim = Simulation{
+			Mode:      SimHubDown,
+			UpdatedAt: time.Now().UTC(),
+			Note:      fmt.Sprintf("hub unreachable for payment sites → %s sole active; peer refuses until hub returns", fallback),
 		}
 		return nil
 	case SimUnreachable:
@@ -174,12 +187,18 @@ func (r *ActiveActiveResolver) Snapshot() Overview {
 		fallback = r.sites[0]
 	}
 	peers := r.activePeersLocked(effReach)
+	if r.sim.Mode == SimHubDown && fallback != "" {
+		peers = []string{fallback}
+	}
 	sole := ""
 	writeMode := "active-active"
-	switch len(peers) {
-	case 0:
+	switch {
+	case r.sim.Mode == SimHubDown && fallback != "":
+		sole = fallback
+		writeMode = "sole-active"
+	case len(peers) == 0:
 		writeMode = "none"
-	case 1:
+	case len(peers) == 1:
 		sole = peers[0]
 		writeMode = "sole-active"
 	}
@@ -277,6 +296,25 @@ func (r *ActiveActiveResolver) resolveLocked(callerCluster string, reach map[str
 		status.Role = RoleUnreachable
 		status.AcceptTraffic = false
 		status.Reason = "unknown_cluster"
+		return status
+	}
+
+	// Hub unreachable (demo): only fallbackActive (priority[0] / cluster1) accepts.
+	if r.sim.Mode == SimHubDown {
+		fallback := r.sites[0]
+		status.ActivePeers = []string{fallback}
+		status.PartitionDetected = true
+		if callerCluster == fallback {
+			status.Role = RoleActive
+			status.AcceptTraffic = true
+			status.SoleActive = true
+			status.Reason = "simulated_hub_unreachable_fallback_active"
+			return status
+		}
+		status.Role = RoleStandby
+		status.AcceptTraffic = false
+		status.SoleActive = false
+		status.Reason = "simulated_hub_unreachable_cluster1_active"
 		return status
 	}
 

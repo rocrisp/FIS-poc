@@ -253,16 +253,18 @@ func (s *siteRole) policy() (accept, anyPayer, hubOK, sole bool, writeMode, reas
 func (s *siteRole) update(st arbitratorState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.hubReachable = true
+	s.hubReachable = st.Simulation.Mode != "hub-down"
 	s.role = st.Datacenter.Role
 	s.acceptTraffic = st.Datacenter.AcceptTraffic
 	s.reason = st.Datacenter.Reason
 	s.partitioned = st.Partition.Detected
 	s.activePeers = append([]string(nil), st.Partition.ActivePeers...)
 	s.simMode = st.Simulation.Mode
-	s.soleActive = st.Datacenter.SoleActive || st.Partition.WriteMode == "sole-active"
+	s.soleActive = st.Datacenter.SoleActive // only this site — do not infer from global writeMode
 	s.writeMode = st.Partition.WriteMode
-	if s.writeMode == "" {
+	if st.Simulation.Mode == "hub-down" {
+		s.writeMode = "hub-unreachable-fallback"
+	} else if s.writeMode == "" {
 		if s.soleActive {
 			s.writeMode = "sole-active"
 		} else {
