@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-hub
+  namespace: payment-hub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-hub
+  template:
+    metadata:
+      labels:
+        app: payment-hub
+    spec:
+      containers:
+        - name: payment-hub
+          image: image-registry.openshift-image-registry.svc:5000/payment-hub/payment-hub-demo:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: CLUSTER_NAME
+              value: "CLUSTER_NAME_PLACEHOLDER"
+            - name: PEER_CLUSTER
+              value: "PEER_CLUSTER_PLACEHOLDER"
+            - name: ARBITRATOR_URL
+              value: "https://akka-split-brain-arbitrator-open-cluster-management.apps.rose-fis.opdev.io"
+            - name: KAFKA_BOOTSTRAP
+              value: "kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092"
+            - name: LISTEN_ADDR
+              value: ":8080"
+            - name: ARBITRATOR_POLL
+              value: "5s"
+            - name: ARBITRATOR_INSECURE_SKIP_VERIFY
+              value: "true"
+            - name: STARTING_BALANCE
+              value: "1000"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-hub
+  namespace: payment-hub
+spec:
+  selector:
+    app: payment-hub
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: payment-hub
+  namespace: payment-hub
+spec:
+  tls:
+    termination: edge
+  to:
+    kind: Service
+    name: payment-hub
+    weight: 100
+  port:
+    targetPort: http

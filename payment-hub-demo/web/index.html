@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Payment hub</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="hero" id="hero">
+    <p class="eyebrow">FIS payment site</p>
+    <h1 id="cluster">—</h1>
+    <p class="role-line" id="roleLine">ROLE</p>
+    <p class="sub" id="sub">polling arbitrator…</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Submit payment</h2>
+      <p class="lede" id="formHint">Only the active site accepts new instructions.</p>
+      <form id="payForm">
+        <label>Amount <input name="amount" type="number" step="0.01" value="25" required /></label>
+        <label>Currency <input name="currency" value="USD" /></label>
+        <label>From <input name="from" value="alice" required /></label>
+        <label>To <input name="to" value="bob" required /></label>
+        <button type="submit" id="submitBtn">Submit payment</button>
+      </form>
+      <p class="note" id="formMsg"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Balances</h2>
+      <p class="lede" id="balHint">Per-user totals from validated payments (same Kafka ledger on both sites).</p>
+      <table class="balances" id="balances">
+        <thead><tr><th>User</th><th>Balance</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>Transactions</h2>
+      <p class="lede">Local accepts plus peer events replicated over Kafka/MM2.</p>
+      <ul class="events" id="events"></ul>
+    </section>
+
+    <section class="panel log-panel">
+      <div class="log-head">
+        <h2>Arbitrator traffic</h2>
+        <span class="log-live" id="trafficLive">live</span>
+      </div>
+      <p class="lede">Realtime polls to the ACM arbitrator (<code>/api/v1/state</code>).</p>
+      <div class="log-window" id="trafficLog" aria-live="polite"></div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

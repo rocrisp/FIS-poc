@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FIS Dual-Site Test Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <header class="top">
+    <div class="brand">
+      <span class="mark">FIS</span>
+      <div>
+        <h1>Dual-site test console</h1>
+        <p class="sub">Arbitrator · payment hubs · active/standby gates</p>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="runBtn" type="button">Run all tests</button>
+      <div id="summary" class="summary idle" aria-live="polite">Ready</div>
+    </div>
+  </header>
+
+  <section class="endpoints" id="endpoints">
+    <h2>Targets</h2>
+    <dl id="endpointList"></dl>
+  </section>
+
+  <main>
+    <section class="suite">
+      <div class="suite-head">
+        <h2>Test cases</h2>
+        <p>Live checks against the lab OpenShift routes. Server-side execution (no CORS).</p>
+      </div>
+      <div id="cases" class="cases"></div>
+    </section>
+  </main>
+
+  <footer>
+    <span>payment-instructions / payment-lifecycle mirror separately via MM2</span>
+  </footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>

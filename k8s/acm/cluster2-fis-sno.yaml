@@ -1,0 +1,143 @@
+# Example ACM/Hive SNO provisioning for cluster2-fis.
+# Secrets are placeholders — inject real values out-of-band; do not commit credentials.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cluster2-fis
+---
+apiVersion: hive.openshift.io/v1
+kind: ClusterDeployment
+metadata:
+  name: cluster2-fis
+  namespace: cluster2-fis
+  labels:
+    cloud: AWS
+    region: us-east-1
+    vendor: OpenShift
+spec:
+  baseDomain: opdev.io
+  clusterName: cluster2-fis
+  controlPlaneConfig:
+    servingCertificates: {}
+  installAttemptsLimit: 1
+  installed: false
+  platform:
+    aws:
+      credentialsSecretRef:
+        name: cluster2-fis-aws-creds
+      region: us-east-1
+  provisioning:
+    installConfigSecretRef:
+      name: cluster2-fis-install-config
+    sshPrivateKeySecretRef:
+      name: cluster2-fis-ssh-private-key
+    imageSetRef:
+      name: ocp-4.22.7
+  pullSecretRef:
+    name: cluster2-fis-pull-secret
+---
+apiVersion: cluster.open-cluster-management.io/v1
+kind: ManagedCluster
+metadata:
+  labels:
+    cloud: Amazon
+    region: us-east-1
+    name: cluster2-fis
+    vendor: OpenShift
+  name: cluster2-fis
+spec:
+  hubAcceptsClient: true
+---
+# NOTE: No MachinePool for SNO — the single master node runs all workloads
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cluster2-fis-pull-secret
+  namespace: cluster2-fis
+stringData:
+  .dockerconfigjson: '{"auths":{}}' # REPLACE with real pull secret
+type: kubernetes.io/dockerconfigjson
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cluster2-fis-install-config
+  namespace: cluster2-fis
+type: Opaque
+stringData:
+  install-config.yaml: |
+    apiVersion: v1
+    metadata:
+      name: cluster2-fis
+    baseDomain: example.com
+    controlPlane:
+      hyperthreading: Enabled
+      name: master
+      replicas: 1
+      platform:
+        aws:
+          type: m5.2xlarge
+    compute:
+    - hyperthreading: Enabled
+      name: worker
+      replicas: 0
+      platform:
+        aws:
+          type: m5.xlarge
+    networking:
+      networkType: OVNKubernetes
+      clusterNetwork:
+      - cidr: 10.128.0.0/14
+        hostPrefix: 23
+      machineNetwork:
+      - cidr: 10.0.0.0/16
+      serviceNetwork:
+      - 172.30.0.0/16
+    platform:
+      aws:
+        region: us-east-1
+    pullSecret: ""
+    sshKey: "ssh-rsa REPLACE_ME"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cluster2-fis-ssh-private-key
+  namespace: cluster2-fis
+stringData:
+  ssh-privatekey: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    REPLACE_ME
+    -----END OPENSSH PRIVATE KEY-----
+type: Opaque
+---
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: cluster2-fis-aws-creds
+  namespace: cluster2-fis
+stringData:
+  aws_access_key_id: REPLACE_ME
+  aws_secret_access_key: REPLACE_ME
+---
+apiVersion: agent.open-cluster-management.io/v1
+kind: KlusterletAddonConfig
+metadata:
+  name: cluster2-fis
+  namespace: cluster2-fis
+spec:
+  clusterName: cluster2-fis
+  clusterNamespace: cluster2-fis
+  clusterLabels:
+    cloud: Amazon
+    vendor: OpenShift
+  applicationManager:
+    enabled: true
+  policyController:
+    enabled: true
+  searchCollector:
+    enabled: true
+  certPolicyController:
+    enabled: true

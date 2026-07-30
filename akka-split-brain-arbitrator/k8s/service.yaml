@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: akka-split-brain-arbitrator
+  namespace: open-cluster-management
+spec:
+  selector:
+    app: akka-split-brain-arbitrator
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http

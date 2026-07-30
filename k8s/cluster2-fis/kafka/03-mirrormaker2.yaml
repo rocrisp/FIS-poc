@@ -1,0 +1,48 @@
+# MirrorMaker2 on cluster2-fis: replicate events TO cluster1-fis.
+# Bidirectional MM2 so either site can be active after ACM failover.
+#
+# BEFORE APPLYING: replace CLUSTER1_FIS_EXTERNAL_BOOTSTRAP (see scripts/wire-mirrormaker2.sh).
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaMirrorMaker2
+metadata:
+  name: mm2-to-cluster1-fis
+  namespace: kafka
+spec:
+  version: 3.7.1
+  replicas: 1
+  connectCluster: cluster1-fis
+  clusters:
+    - alias: cluster2-fis
+      bootstrapServers: kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092
+    - alias: cluster1-fis
+      bootstrapServers: CLUSTER1_FIS_EXTERNAL_BOOTSTRAP
+      config:
+        config.storage.replication.factor: 1
+        offset.storage.replication.factor: 1
+        status.storage.replication.factor: 1
+  mirrors:
+    - sourceCluster: cluster2-fis
+      targetCluster: cluster1-fis
+      sourceConnector:
+        config:
+          replication.factor: 1
+          offset-syncs.topic.replication.factor: 1
+          sync.topic.acls.enabled: "false"
+          # Anchor topic regex so prefixed remote copies (cluster2-fis.payment-*)
+          # are not re-mirrored by the reverse MM2 path.
+          topics: "^payment-instructions$|^payment-lifecycle$"
+      heartbeatConnector:
+        config:
+          heartbeats.topic.replication.factor: 1
+      checkpointConnector:
+        config:
+          checkpoints.topic.replication.factor: 1
+          sync.group.offsets.enabled: "true"
+          sync.group.offsets.interval.seconds: "60"
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: "250m"
+    limits:
+      memory: 1Gi
+      cpu: "1"

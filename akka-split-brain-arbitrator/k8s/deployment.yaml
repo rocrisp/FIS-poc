@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: akka-split-brain-arbitrator
+  namespace: open-cluster-management
+  labels:
+    app: akka-split-brain-arbitrator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: akka-split-brain-arbitrator
+  template:
+    metadata:
+      labels:
+        app: akka-split-brain-arbitrator
+    spec:
+      serviceAccountName: akka-split-brain-arbitrator
+      containers:
+        - name: arbitrator
+          image: image-registry.openshift-image-registry.svc:5000/open-cluster-management/akka-split-brain-arbitrator:latest
+          imagePullPolicy: Always
+          args:
+            - -config=/etc/arbitrator/config.yaml
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: CONFIG_PATH
+              value: /etc/arbitrator/config.yaml
+            - name: CLUSTER_NAMES
+              value: "cluster1-fis,cluster2-fis"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/arbitrator
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: akka-sbr-config

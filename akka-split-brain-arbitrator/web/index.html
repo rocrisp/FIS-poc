@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FIS Arbitrator — Hub</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="eyebrow">ACM hub · rose-fis</p>
+      <h1>Split-brain arbitrator</h1>
+    </div>
+    <div class="meta" id="simBadge">mode: —</div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Site roles</h2>
+      <p class="lede">Live view of active / standby / unreachable. Sites poll <code>/api/v1/state</code> and honor <code>acceptTraffic</code>.</p>
+      <div class="sites" id="sites"></div>
+      <dl class="facts" id="facts"></dl>
+    </section>
+
+    <section class="panel controls">
+      <h2>Simulation</h2>
+      <p class="lede">Demo failover without touching Submariner. Apps keep polling and react to role changes.</p>
+      <div class="actions">
+        <button type="button" data-mode="none">Clear (live signals)</button>
+        <button type="button" data-mode="partition">Submariner mesh down</button>
+        <button type="button" data-mode="unreachable" data-target="cluster1-fis">Mark cluster1 unreachable</button>
+        <button type="button" data-mode="unreachable" data-target="cluster2-fis">Mark cluster2 unreachable</button>
+      </div>
+      <p class="note" id="simNote"></p>
+      <pre id="raw" class="raw" hidden></pre>
+    </section>
+
+    <section class="panel log-panel">
+      <div class="log-head">
+        <h2>Arbitrator traffic</h2>
+        <span class="log-live" id="trafficLive">live</span>
+      </div>
+      <p class="lede">Realtime site polls of <code>/api/v1/state</code> and simulation changes.</p>
+      <div class="log-window" id="trafficLog" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

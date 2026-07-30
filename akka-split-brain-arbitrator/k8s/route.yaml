@@ -1,0 +1,14 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: akka-split-brain-arbitrator
+  namespace: open-cluster-management
+spec:
+  tls:
+    termination: edge
+  to:
+    kind: Service
+    name: akka-split-brain-arbitrator
+    weight: 100
+  port:
+    targetPort: http
