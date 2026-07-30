@@ -67,6 +67,9 @@ type partitionInfo struct {
 	Since            string   `json:"since,omitempty"`
 	SubmarinerStatus string   `json:"submarinerStatus,omitempty"`
 	ActivePeers      []string `json:"activePeers,omitempty"`
+	SoleActiveSite   string   `json:"soleActiveSite,omitempty"`
+	WriteMode        string   `json:"writeMode,omitempty"`
+	FallbackActive   string   `json:"fallbackActive,omitempty"`
 }
 
 type putRequest struct {
@@ -216,9 +219,13 @@ func (h *Handler) buildResponse(data json.RawMessage, version int64, updated tim
 		resp.LastModified = updated.UTC().Format(time.RFC3339)
 	}
 
+	ov := h.resolver.Snapshot()
 	resp.Partition = partitionInfo{
-		Detected:    dc.PartitionDetected,
-		ActivePeers: dc.ActivePeers,
+		Detected:       dc.PartitionDetected,
+		ActivePeers:    dc.ActivePeers,
+		SoleActiveSite: ov.SoleActiveSite,
+		WriteMode:      ov.WriteMode,
+		FallbackActive: ov.FallbackActive,
 	}
 	if dc.PartitionDetected {
 		resp.Partition.SubmarinerStatus = "disconnected"

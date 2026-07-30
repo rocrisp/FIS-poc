@@ -37,10 +37,14 @@ type arbitratorState struct {
 		Role          string `json:"role"`
 		AcceptTraffic bool   `json:"acceptTraffic"`
 		Reason        string `json:"reason"`
+		SoleActive    bool   `json:"soleActive"`
 	} `json:"datacenter"`
 	Partition struct {
-		Detected    bool     `json:"detected"`
-		ActivePeers []string `json:"activePeers"`
+		Detected       bool     `json:"detected"`
+		ActivePeers    []string `json:"activePeers"`
+		SoleActiveSite string   `json:"soleActiveSite"`
+		WriteMode      string   `json:"writeMode"`
+		FallbackActive string   `json:"fallbackActive"`
 	} `json:"partition"`
 	Simulation struct {
 		Mode   string `json:"mode"`
@@ -219,13 +223,18 @@ func (t *trafficLog) list() []trafficEntry {
 }
 
 type siteRole struct {
-	mu            sync.RWMutex
-	role          string
-	acceptTraffic bool
-	reason        string
-	partitioned   bool
-	activePeers   []string
-	simMode       string
+	mu             sync.RWMutex
+	role           string
+	acceptTraffic  bool
+	reason         string
+	partitioned    bool
+	activePeers    []string
+	simMode        string
+	hubReachable   bool
+	soleActive     bool
+	writeMode      string
+	fallbackActive string
+	anyPayer       bool // sole-active or hub-down fallback: skip letter affinity
 }
 
 func (s *siteRole) snapshot() (role string, accept bool, reason string, partitioned bool, peers []string, sim string) {
@@ -235,15 +244,61 @@ func (s *siteRole) snapshot() (role string, accept bool, reason string, partitio
 	return s.role, s.acceptTraffic, s.reason, s.partitioned, peers, s.simMode
 }
 
+func (s *siteRole) policy() (accept, anyPayer, hubOK, sole bool, writeMode, reason string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.acceptTraffic, s.anyPayer, s.hubReachable, s.soleActive, s.writeMode, s.reason
+}
+
 func (s *siteRole) update(st arbitratorState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.hubReachable = true
 	s.role = st.Datacenter.Role
 	s.acceptTraffic = st.Datacenter.AcceptTraffic
 	s.reason = st.Datacenter.Reason
 	s.partitioned = st.Partition.Detected
 	s.activePeers = append([]string(nil), st.Partition.ActivePeers...)
 	s.simMode = st.Simulation.Mode
+	s.soleActive = st.Datacenter.SoleActive || st.Partition.WriteMode == "sole-active"
+	s.writeMode = st.Partition.WriteMode
+	if s.writeMode == "" {
+		if s.soleActive {
+			s.writeMode = "sole-active"
+		} else {
+			s.writeMode = "active-active"
+		}
+	}
+	s.fallbackActive = st.Partition.FallbackActive
+	// When the hub says this site is the only writer, accept any payer.
+	s.anyPayer = s.acceptTraffic && s.soleActive
+}
+
+// applyHubUnreachableFallback: payment hubs cannot reach the arbitrator.
+// Policy: cluster1 (fallback) stays sole active; cluster2 refuses until hub returns.
+func (s *siteRole) applyHubUnreachableFallback(clusterName, fallbackActive string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hubReachable = false
+	s.simMode = ""
+	s.partitioned = true
+	s.writeMode = "hub-unreachable-fallback"
+	s.fallbackActive = fallbackActive
+	s.activePeers = nil
+	if clusterName == fallbackActive {
+		s.role = "active"
+		s.acceptTraffic = true
+		s.soleActive = true
+		s.anyPayer = true
+		s.reason = "hub_unreachable_fallback_active"
+		s.activePeers = []string{clusterName}
+	} else {
+		s.role = "standby"
+		s.acceptTraffic = false
+		s.soleActive = false
+		s.anyPayer = false
+		s.reason = "hub_unreachable_cluster1_active"
+	}
 }
 
 // homeSite returns the owning cluster for the payer account (from).
@@ -263,6 +318,7 @@ func homeSite(account string) string {
 func main() {
 	clusterName := envOr("CLUSTER_NAME", "cluster1-fis")
 	peerCluster := envOr("PEER_CLUSTER", defaultPeer(clusterName))
+	fallbackActive := envOr("HUB_FALLBACK_ACTIVE", "cluster1-fis")
 	arbitratorURL := strings.TrimRight(envOr("ARBITRATOR_URL", "http://localhost:8080"), "/")
 	kafkaBootstrap := envOr("KAFKA_BOOTSTRAP", "kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092")
 	listen := envOr("LISTEN_ADDR", ":8080")
@@ -274,14 +330,14 @@ func main() {
 	}
 	defer producer.Close()
 
-	role := &siteRole{role: "unknown", acceptTraffic: false}
+	role := &siteRole{role: "unknown", acceptTraffic: false, fallbackActive: fallbackActive}
 	events := newEventLog()
 	balances := newLedger(floatOr("STARTING_BALANCE", 1000))
 	traffic := &trafficLog{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	insecureTLS := envOr("ARBITRATOR_INSECURE_SKIP_VERIFY", "true") == "true"
-	go pollArbitrator(ctx, arbitratorURL, clusterName, role, traffic, pollEvery, insecureTLS)
+	go pollArbitrator(ctx, arbitratorURL, clusterName, fallbackActive, role, traffic, pollEvery, insecureTLS)
 	go consumeTransactions(ctx, kafkaBootstrap, clusterName, peerCluster, events, balances)
 
 	webFS, err := fs.Sub(uiRoot, "web")
@@ -302,25 +358,38 @@ func main() {
 	})
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		r, accept, reason, partitioned, peers, sim := role.snapshot()
+		_, anyPayer, hubOK, sole, writeMode, _ := role.policy()
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"status":        "ok",
-			"mode":          "active-active",
-			"cluster":       clusterName,
-			"peerCluster":   peerCluster,
-			"role":          r,
-			"acceptTraffic": accept,
-			"reason":        reason,
-			"partitioned":   partitioned,
-			"activePeers":   peers,
-			"simulation":    sim,
-			"affinity":      "payer home: a-m→cluster1-fis, n-z→cluster2-fis",
+			"status":         "ok",
+			"mode":           "active-active",
+			"cluster":        clusterName,
+			"peerCluster":    peerCluster,
+			"role":           r,
+			"acceptTraffic":  accept,
+			"reason":         reason,
+			"partitioned":    partitioned,
+			"activePeers":    peers,
+			"simulation":     sim,
+			"hubReachable":   hubOK,
+			"soleActive":     sole,
+			"writeMode":      writeMode,
+			"anyPayer":       anyPayer,
+			"fallbackActive": fallbackActive,
+			"affinity":       "a-m→cluster1, n-z→cluster2 when both active; any payer when sole-active or hub-down fallback",
 		})
 	})
 	mux.HandleFunc("GET /api/v1/affinity", func(w http.ResponseWriter, _ *http.Request) {
+		_, anyPayer, hubOK, sole, writeMode, reason := role.policy()
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"mode":    "active-active",
-			"cluster": clusterName,
-			"rule":    "first letter of from account: a-m → cluster1-fis, n-z → cluster2-fis",
+			"mode":           "active-active",
+			"cluster":        clusterName,
+			"hubReachable":   hubOK,
+			"soleActive":     sole,
+			"writeMode":      writeMode,
+			"anyPayer":       anyPayer,
+			"reason":         reason,
+			"fallbackActive": fallbackActive,
+			"rule":           "letter affinity when both sites active; any payer when this site is sole-active or hub-unreachable fallback on cluster1",
 			"examples": map[string]string{
 				"alice": homeSite("alice"),
 				"bob":   homeSite("bob"),
@@ -352,7 +421,7 @@ func main() {
 		})
 	})
 	mux.HandleFunc("POST /api/v1/payments", func(w http.ResponseWriter, r *http.Request) {
-		_, accept, _, _, _, _ := role.snapshot()
+		accept, anyPayer, _, _, _, reason := role.policy()
 		var req paymentRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_body"})
@@ -364,12 +433,12 @@ func main() {
 				Status: "refused",
 				Origin: "ui",
 				Source: clusterName,
-				Detail: "fenced",
+				Detail: reason,
 				Amount: req.Amount,
 			})
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-				"error":   "fenced",
-				"message": "this site is unreachable/fenced; refuse new payments",
+				"error":   "not_accepting",
+				"message": reason,
 				"cluster": clusterName,
 			})
 			return
@@ -378,11 +447,12 @@ func main() {
 		if home == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
 				"error":   "missing_from",
-				"message": "from account is required for affinity routing",
+				"message": "from account is required",
 			})
 			return
 		}
-		if home != clusterName {
+		// Letter affinity only when both sites are active; sole-active / hub-down fallback accepts any payer.
+		if !anyPayer && home != clusterName {
 			events.add(siteEvent{
 				TS:     time.Now().UTC().Format(time.RFC3339),
 				Status: "refused",
@@ -392,11 +462,11 @@ func main() {
 				Amount: req.Amount,
 			})
 			writeJSON(w, http.StatusConflict, map[string]string{
-				"error":     "wrong_home_site",
-				"message":   fmt.Sprintf("payer %q is homed on %s; submit on that site", req.From, home),
-				"cluster":   clusterName,
-				"homeSite":  home,
-				"from":      req.From,
+				"error":    "wrong_home_site",
+				"message":  fmt.Sprintf("payer %q is homed on %s; submit on that site", req.From, home),
+				"cluster":  clusterName,
+				"homeSite": home,
+				"from":     req.From,
 			})
 			return
 		}
@@ -639,7 +709,7 @@ func (h *txHandler) handleMessage(msg *sarama.ConsumerMessage) {
 	})
 }
 
-func pollArbitrator(ctx context.Context, baseURL, cluster string, role *siteRole, traffic *trafficLog, every time.Duration, insecureTLS bool) {
+func pollArbitrator(ctx context.Context, baseURL, cluster, fallbackActive string, role *siteRole, traffic *trafficLog, every time.Duration, insecureTLS bool) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if insecureTLS {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // demo against OpenShift edge routes
@@ -654,24 +724,31 @@ func pollArbitrator(ctx context.Context, baseURL, cluster string, role *siteRole
 		traffic.add("out", "GET "+baseURL+"/api/v1/state X-Cluster-Name="+cluster)
 		resp, err := client.Do(req)
 		if err != nil {
-			traffic.add("in", "ERROR "+err.Error())
-			log.Printf("arbitrator poll error: %v", err)
+			role.applyHubUnreachableFallback(cluster, fallbackActive)
+			traffic.add("in", "ERROR "+err.Error()+" → hub-unreachable fallback (cluster1 sole active)")
+			log.Printf("arbitrator poll error: %v — fallback active=%s", err, fallbackActive)
 			return
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode >= 500 {
+			role.applyHubUnreachableFallback(cluster, fallbackActive)
+			traffic.add("in", fmt.Sprintf("HTTP %d → hub-unreachable fallback", resp.StatusCode))
+			return
+		}
 		var st arbitratorState
 		if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
-			traffic.add("in", fmt.Sprintf("HTTP %d decode_error: %v", resp.StatusCode, err))
+			role.applyHubUnreachableFallback(cluster, fallbackActive)
+			traffic.add("in", fmt.Sprintf("HTTP %d decode_error: %v → hub-unreachable fallback", resp.StatusCode, err))
 			log.Printf("arbitrator decode error: %v", err)
 			return
 		}
 		role.update(st)
 		traffic.add("in", fmt.Sprintf(
-			"HTTP %d ← role=%s acceptTraffic=%v reason=%s partition=%v peers=%v sim=%s",
-			resp.StatusCode, st.Datacenter.Role, st.Datacenter.AcceptTraffic, st.Datacenter.Reason,
-			st.Partition.Detected, st.Partition.ActivePeers, st.Simulation.Mode,
+			"HTTP %d ← role=%s accept=%v sole=%v writeMode=%s reason=%s peers=%v sim=%s",
+			resp.StatusCode, st.Datacenter.Role, st.Datacenter.AcceptTraffic, st.Datacenter.SoleActive,
+			st.Partition.WriteMode, st.Datacenter.Reason, st.Partition.ActivePeers, st.Simulation.Mode,
 		))
-		log.Printf("role=%s acceptTraffic=%v partition=%v peers=%v sim=%s", st.Datacenter.Role, st.Datacenter.AcceptTraffic, st.Partition.Detected, st.Partition.ActivePeers, st.Simulation.Mode)
+		log.Printf("role=%s accept=%v sole=%v writeMode=%s reason=%s", st.Datacenter.Role, st.Datacenter.AcceptTraffic, st.Datacenter.SoleActive, st.Partition.WriteMode, st.Datacenter.Reason)
 	}
 	fetch()
 	ticker := time.NewTicker(every)

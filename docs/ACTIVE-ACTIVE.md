@@ -17,18 +17,31 @@ When both managed clusters are reachable:
 
 - both sites get `role=active` and `acceptTraffic=true`
 - mesh-down (`partition` simulation) keeps **both** active (`reason=active_mesh_degraded`) — sync may lag
-- marking a site unreachable fences only that site; the peer stays active
+- marking a site unreachable fences only that site; the peer stays **sole active** (`writeMode=sole-active`, `soleActiveSite=<peer>`)
+
+Overview fields:
+
+| Field | Meaning |
+|-------|---------|
+| `fallbackActive` | Preferred writer if payment hubs lose the hub (`cluster1-fis`) |
+| `soleActiveSite` | Only reachable site when the other is down |
+| `writeMode` | `active-active` \| `sole-active` \| `none` |
+
+**Cluster1 down:** hub reports `soleActiveSite=cluster2-fis` so cluster2 is clearly the active writer.
 
 ### Payment hub (`payment-hub-aa`)
 
 1. Poll the AA arbitrator; refuse if `acceptTraffic=false` (fenced).
-2. **Account affinity** on the payer (`from`):
+2. **Account affinity** when both sites are active:
    - first letter **a–m** → home `cluster1-fis`
    - first letter **n–z** → home `cluster2-fis`
-3. Wrong home → HTTP 409 `wrong_home_site` (even if the site is active).
-4. Kafka/MM2 + ledger UI same as the AP demo (separate consumer group).
+3. **Sole active** (peer down): that site accepts **any** payer.
+4. **Hub unreachable** (local policy — sites cannot ask the referee):
+   - `cluster1-fis` becomes sole active (`hub_unreachable_fallback_active`)
+   - `cluster2-fis` refuses (`hub_unreachable_cluster1_active`) until the hub returns
+5. Kafka/MM2 + ledger UI same as the AP demo (separate consumer group).
 
-Examples: `alice`/`bob` on cluster1; `nancy`/`oscar` on cluster2.
+Examples: `alice`/`bob` on cluster1; `nancy`/`oscar` on cluster2 (when both active).
 
 ## Deploy
 
@@ -53,14 +66,24 @@ ARBITRATOR_URL="$ARBITRATOR_AA_URL" ./scripts/deploy-payment-hub-aa.sh cluster2-
 | AA hub cluster1 | `payment-hub-aa-payment-hub-aa.apps.cluster1-fis.opdev.io` |
 | AA hub cluster2 | `payment-hub-aa-payment-hub-aa.apps.cluster2-fis.opdev.io` |
 
+## Failover / degrade policy
+
+| Situation | Who accepts payments |
+|-----------|----------------------|
+| Both sites + hub healthy | Both (with letter affinity) |
+| Cluster1 down (hub up) | **Cluster2 sole active** (any payer) — hub sets `soleActiveSite=cluster2-fis` |
+| Cluster2 down (hub up) | **Cluster1 sole active** (any payer) |
+| Hub unreachable from sites | **Cluster1 sole active**; cluster2 refuses until hub returns |
+
 ## Demo walkthrough
 
 1. Open both AA payment hubs — both show **ACTIVE** with `acceptTraffic=true`.
 2. On cluster1 submit `alice → oscar`; both ledgers update via MM2.
 3. On cluster2 submit `oscar → alice`; both ledgers update.
-4. On cluster1 try `oscar → alice` → refused (`wrong_home_site`).
-5. Hub AA GUI: **Mark cluster1 unreachable** → cluster1 fenced; cluster2 still active for its home accounts.
+4. On cluster1 try `oscar → alice` → refused (`wrong_home_site`) while both active.
+5. Hub AA GUI: **Mark cluster1 unreachable** → hub shows `writeMode=sole-active`, `soleActiveSite=cluster2-fis`; cluster2 accepts any payer.
 6. **Clear (live signals)** → both active again.
+7. (Optional) Block hub route from a site → cluster1 stays active; cluster2 refuses with `hub_unreachable_cluster1_active`.
 
 ## Why not stretched Akka Cluster?
 

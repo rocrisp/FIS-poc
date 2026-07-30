@@ -46,6 +46,10 @@
       .join(", ");
     factsEl.innerHTML =
       `<dt>Mode</dt><dd>${escapeHtml(overview.mode || "active-active")}</dd>` +
+      `<dt>Write mode</dt><dd>${escapeHtml(overview.writeMode || "—")}` +
+      (overview.soleActiveSite ? " · sole=" + escapeHtml(overview.soleActiveSite) : "") +
+      `</dd>` +
+      `<dt>Hub-down fallback</dt><dd>${escapeHtml(overview.fallbackActive || "cluster1-fis")} becomes sole active</dd>` +
       `<dt>Observed Submariner</dt><dd>${overview.observedSubmarinerConnected ? "connected" : "disconnected"}</dd>` +
       `<dt>Effective Submariner</dt><dd>${overview.effectiveSubmarinerConnected ? "connected" : "disconnected"}</dd>` +
       `<dt>Observed reachability</dt><dd>${escapeHtml(reachBits || "—")}</dd>` +

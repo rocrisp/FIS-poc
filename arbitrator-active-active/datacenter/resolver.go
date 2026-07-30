@@ -28,6 +28,7 @@ type DatacenterStatus struct {
 	Since             time.Time `json:"since,omitempty"`
 	Mode              string    `json:"mode"` // active-active
 	ActivePeers       []string  `json:"activePeers,omitempty"`
+	SoleActive        bool      `json:"soleActive,omitempty"` // true when this site is the only reachable writer
 	Simulated         bool      `json:"simulated,omitempty"`
 }
 
@@ -45,7 +46,10 @@ type Overview struct {
 	ObservedReachable   map[string]bool    `json:"observedReachability"`
 	EffectiveSubmariner bool               `json:"effectiveSubmarinerConnected"`
 	Simulation          Simulation         `json:"simulation"`
-	Priority            []string           `json:"priority"` // site list (not standby order)
+	Priority            []string           `json:"priority"` // site list; [0] = hub-unreachable fallback active
+	FallbackActive      string             `json:"fallbackActive"` // preferred sole writer if payment hubs lose the hub
+	SoleActiveSite      string             `json:"soleActiveSite,omitempty"`
+	WriteMode           string             `json:"writeMode"` // active-active | sole-active
 }
 
 type Resolver interface {
@@ -165,6 +169,21 @@ func (r *ActiveActiveResolver) Snapshot() Overview {
 		sites = append(sites, r.resolveLocked(name, effReach, effSub))
 	}
 
+	fallback := ""
+	if len(r.sites) > 0 {
+		fallback = r.sites[0]
+	}
+	peers := r.activePeersLocked(effReach)
+	sole := ""
+	writeMode := "active-active"
+	switch len(peers) {
+	case 0:
+		writeMode = "none"
+	case 1:
+		sole = peers[0]
+		writeMode = "sole-active"
+	}
+
 	return Overview{
 		Mode:                "active-active",
 		Sites:               sites,
@@ -173,6 +192,9 @@ func (r *ActiveActiveResolver) Snapshot() Overview {
 		EffectiveSubmariner: effSub,
 		Simulation:          r.sim,
 		Priority:            append([]string(nil), r.sites...),
+		FallbackActive:      fallback,
+		SoleActiveSite:      sole,
+		WriteMode:           writeMode,
 	}
 }
 
@@ -261,7 +283,10 @@ func (r *ActiveActiveResolver) resolveLocked(callerCluster string, reach map[str
 	// Active-active: every reachable site accepts traffic.
 	status.Role = RoleActive
 	status.AcceptTraffic = true
-	if !subConnected {
+	if len(peers) == 1 {
+		status.SoleActive = true
+		status.Reason = "sole_active"
+	} else if !subConnected {
 		status.Reason = "active_mesh_degraded"
 	} else {
 		status.Reason = "active_peer"

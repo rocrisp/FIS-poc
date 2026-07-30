@@ -77,9 +77,11 @@
     const peers = Array.isArray(h.activePeers) ? h.activePeers.join(",") : "";
     const bits = [
       "mode=" + (h.mode || "active-active"),
+      "writeMode=" + (h.writeMode || "—"),
       "acceptTraffic=" + !!h.acceptTraffic,
+      h.soleActive ? "soleActive" : null,
+      h.hubReachable === false ? "hubUnreachable" : null,
       h.reason ? "reason=" + h.reason : null,
-      h.partitioned ? "partitioned" : null,
       peers ? "peers=" + peers : null,
     ].filter(Boolean);
     sub.textContent = bits.join(" · ");
@@ -89,11 +91,17 @@
       fromInput.value = h.cluster === "cluster2-fis" ? "oscar" : "alice";
       fromInput.dataset.autohome = "1";
     }
-    formHint.textContent = !h.acceptTraffic
-      ? "This site is fenced — submissions are refused."
-      : h.cluster === "cluster2-fis"
-        ? "Active-active: accept traffic here for payers n–z (e.g. nancy, oscar)."
-        : "Active-active: accept traffic here for payers a–m (e.g. alice, bob).";
+    if (!h.acceptTraffic) {
+      formHint.textContent = h.reason === "hub_unreachable_cluster1_active"
+        ? "Hub unreachable — cluster1 is sole active until the hub returns."
+        : "This site is not accepting payments (" + (h.reason || "fenced") + ").";
+    } else if (h.anyPayer || h.soleActive) {
+      formHint.textContent = "Sole active writer — any payer accepted on this site.";
+    } else if (h.cluster === "cluster2-fis") {
+      formHint.textContent = "Both sites active — payers n–z home here (e.g. nancy, oscar).";
+    } else {
+      formHint.textContent = "Both sites active — payers a–m home here (e.g. alice, bob).";
+    }
   }
 
   function renderBalances(body) {
