@@ -8,6 +8,8 @@ metadata:
     fis.demo/mode: active-active
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: payment-hub-aa

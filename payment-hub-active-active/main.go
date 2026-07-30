@@ -502,8 +502,21 @@ func consumeTransactions(ctx context.Context, bootstrap, clusterName, peer strin
 	cfg.Version = sarama.V3_3_0_0
 
 	// Separate consumer group from the active-passive demo.
-	group := fmt.Sprintf("payment-hub-aa-%s-bal1", clusterName)
-	client, err := sarama.NewConsumerGroup(strings.Split(bootstrap, ","), group, cfg)
+	group := envOr("KAFKA_CONSUMER_GROUP", fmt.Sprintf("payment-hub-aa-%s-ledger", clusterName))
+	brokers := strings.Split(bootstrap, ",")
+
+	// Balances are in-memory only. On every process start, reset the consumer group
+	// so OffsetOldest re-reads full topic history. Otherwise a rolling deploy commits
+	// offsets on pod A and pod B resumes mid-stream with an empty ledger.
+	if envOr("RESET_LEDGER_ON_START", "true") == "true" {
+		if err := resetConsumerGroup(brokers, group, cfg); err != nil {
+			log.Printf("kafka reset consumer group %s: %v (continuing)", group, err)
+		} else {
+			log.Printf("kafka consumer group %s reset — rebuilding ledger from topic start", group)
+		}
+	}
+
+	client, err := sarama.NewConsumerGroup(brokers, group, cfg)
 	if err != nil {
 		log.Printf("kafka consumer group: %v (retrying)", err)
 		go retryConsume(ctx, bootstrap, clusterName, peer, events, balances)
@@ -512,7 +525,7 @@ func consumeTransactions(ctx context.Context, bootstrap, clusterName, peer strin
 	defer client.Close()
 
 	handler := &txHandler{cluster: clusterName, events: events, balances: balances}
-	log.Printf("consuming kafka topics: %v", topics)
+	log.Printf("consuming kafka topics: %v group=%s", topics, group)
 	for {
 		if err := client.Consume(ctx, topics, handler); err != nil {
 			log.Printf("kafka consume: %v", err)
@@ -522,6 +535,19 @@ func consumeTransactions(ctx context.Context, bootstrap, clusterName, peer strin
 		}
 		time.Sleep(2 * time.Second)
 	}
+}
+
+func resetConsumerGroup(brokers []string, group string, cfg *sarama.Config) error {
+	admin, err := sarama.NewClusterAdmin(brokers, cfg)
+	if err != nil {
+		return err
+	}
+	defer admin.Close()
+	err = admin.DeleteConsumerGroup(group)
+	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "unknown consumer group") {
+		return err
+	}
+	return nil
 }
 
 func retryConsume(ctx context.Context, bootstrap, clusterName, peer string, events *eventLog, balances *ledger) {
