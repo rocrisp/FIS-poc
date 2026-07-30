@@ -94,7 +94,7 @@ curl -sk -X PUT "$ARBITRATOR_URL/api/v1/simulation" \
   -d '{"mode":"none"}' | jq .
 ```
 
-## Roles (not good/bad)
+## Roles
 
 | Role | Meaning |
 |------|---------|

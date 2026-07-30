@@ -279,7 +279,7 @@ curl -sk -X PUT "$ARBITRATOR_URL/api/v1/simulation" \
 
 ---
 
-## Roles (not good/bad)
+## Roles
 
 | Role | `acceptTraffic` | Payment hub behavior |
 |------|-----------------|----------------------|

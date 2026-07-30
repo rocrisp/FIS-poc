@@ -134,7 +134,7 @@ stateDiagram-v2
   }
 ```
 
-Roles are **not** good/bad: **standby is healthy** and warm via Kafka.
+Standby is healthy and warm via Kafka.
 
 ---
 

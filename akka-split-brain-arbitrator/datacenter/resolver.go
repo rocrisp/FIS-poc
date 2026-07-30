@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Role values for active/standby HA (not "good"/"bad" — standby is healthy).
+// Role values for active/standby HA.
 const (
 	RoleActive      = "active"      // accepts new traffic
 	RoleStandby     = "standby"     // healthy, replicating, not accepting new traffic
