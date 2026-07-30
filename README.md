@@ -10,6 +10,7 @@ This repo has **two parallel demos**:
 | **Active-active** (new) | `arbitrator-active-active` + `payment-hub-active-active` | Both healthy sites accept; **payer affinity** avoids double-spend |
 
 Active-active details: [docs/ACTIVE-ACTIVE.md](docs/ACTIVE-ACTIVE.md)  
+AP vs AA (arbitrator + apps): [docs/ACTIVE-ACTIVE-VS-ACTIVE-PASSIVE.md](docs/ACTIVE-ACTIVE-VS-ACTIVE-PASSIVE.md)  
 Architecture (Mermaid + tech map): [docs/ARCHITECTURE-README.md](docs/ARCHITECTURE-README.md)
 
 ```text
@@ -31,6 +32,7 @@ Architecture (Mermaid + tech map): [docs/ARCHITECTURE-README.md](docs/ARCHITECTU
 | `arbitrator-active-active/` | **Active-active** hub API + simulation GUI |
 | `payment-hub-active-active/` | **Active-active** payment UI + account affinity |
 | `docs/ACTIVE-ACTIVE.md` | AA behavior, affinity, deploy |
+| `docs/ACTIVE-ACTIVE-VS-ACTIVE-PASSIVE.md` | What changed in the arbitrator for AA + supporting apps |
 | `docs/ARCHITECTURE-README.md` | How the AP stack works (diagrams) |
 | `docs/KAFKA-MIRRORMAKER2.md` | Kafka listeners, MM2 replication |
 | `docs/EDGE-CASES.md` | Edge-case checklist (AP) |

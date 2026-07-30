@@ -2,6 +2,8 @@
 
 This repo keeps the original **active-passive** demo unchanged and adds a parallel **active-active** stack with distinct names, namespaces, and routes.
 
+For a side-by-side of **what changed in the arbitrator** and **which other apps enable AA**, see [ACTIVE-ACTIVE-VS-ACTIVE-PASSIVE.md](./ACTIVE-ACTIVE-VS-ACTIVE-PASSIVE.md).
+
 | Mode | Arbitrator | Payment app | Namespace |
 |------|------------|-------------|-----------|
 | **Active-passive** (original) | `akka-split-brain-arbitrator/` | `payment-hub-demo/` | `payment-hub` |
