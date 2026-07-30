@@ -25,6 +25,7 @@ Two independent payment sites (`cluster1-fis`, `cluster2-fis`) connected by Subm
 | `akka-split-brain-arbitrator/` | Hub status API + simulation GUI + Submariner/ManagedCluster monitor |
 | `payment-hub-demo/` | Per-site payment API + ACTIVE/STANDBY dashboard |
 | `docs/ARCHITECTURE-README.md` | How it works — technologies + Mermaid diagrams |
+| `docs/KAFKA-MIRRORMAKER2.md` | Kafka listeners, MM2 replication, peer-down behavior |
 | `docs/EDGE-CASES.md` | Edge-case test checklist for demo / QA |
 | `docs/arbitrator-api-for-payment-hub.md` | Arbitrator APIs payment hubs can query |
 | `demo-test-console/` | Optional local curl-based checks (prefer hub/site GUIs) |

@@ -214,6 +214,10 @@ sequenceDiagram
 
 ---
 
+## Kafka and MirrorMaker 2
+
+Details (internal vs **external bootstrap**, bidirectional MM2, what happens if a peer is down): [KAFKA-MIRRORMAKER2.md](./KAFKA-MIRRORMAKER2.md).
+
 ## Kafka topic layout
 
 ```mermaid
@@ -303,6 +307,7 @@ This matches a **dual-datacenter active/standby** payment design: the standby is
 | `payment-hub-demo/` | Per-site payment app + balances/transactions UI |
 | `k8s/cluster1-fis/kafka/`, `k8s/cluster2-fis/kafka/` | Kafka + MM2 manifests |
 | `docs/arbitrator-api-for-payment-hub.md` | APIs payment hubs call on the arbitrator |
+| `docs/KAFKA-MIRRORMAKER2.md` | External bootstrap, MM2, peer-down behavior |
 | `docs/EDGE-CASES.md` | Edge-case test checklist |
 | `scripts/` | Deploy helpers |
 
