@@ -22,7 +22,7 @@
         : mode === "unreachable"
           ? `mode: unreachable (${sim.target || "?"})`
           : mode === "partition"
-            ? "mode: Submariner mesh down (both active)"
+            ? "mode: Submariner mesh down — home sites"
             : mode === "hub-down"
               ? "mode: hub unreachable → cluster1 sole"
               : `mode: ${mode}`;

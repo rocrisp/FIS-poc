@@ -75,7 +75,7 @@ ARBITRATOR_URL="$ARBITRATOR_AA_URL" ./scripts/deploy-payment-hub-aa.sh cluster2-
 | Cluster2 down (hub up) | **Cluster1 sole active** (any payer) |
 | Hub unreachable from sites | **Cluster1 sole active**; cluster2 refuses until hub returns |
 | GUI **Hub unreachable** (`hub-down`) | Same as above (demo without killing the route) |
-| GUI **Submariner mesh down** (`partition`) | **Both stay active** — sync may lag; this is not hub-down |
+| GUI **Submariner mesh down — sites turn into home sites** (`partition`) | **Both stay active** as home sites (affinity); sync may lag; not hub-down |
 
 ## Demo walkthrough
 

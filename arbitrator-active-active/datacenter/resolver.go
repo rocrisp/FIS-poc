@@ -121,7 +121,7 @@ func (r *ActiveActiveResolver) SetSimulation(mode, target string) error {
 		r.sim = Simulation{
 			Mode:      SimPartition,
 			UpdatedAt: time.Now().UTC(),
-			Note:      "Submariner mesh down; both sites stay active (sync may lag). This is NOT hub-down.",
+			Note:      "Submariner mesh down; both stay active as home sites (affinity); sync may lag. This is NOT hub-down.",
 		}
 		if r.partitionSince.IsZero() {
 			r.partitionSince = time.Now()
