@@ -7,7 +7,7 @@
 | `cluster1-fis` | **active** (`acceptTraffic: true`) | Produces payment events; MM2 mirrors to cluster2 |
 | `cluster2-fis` | **standby** (`acceptTraffic: false`) | Consumes mirrored events; stays warm for failover |
 
-Standby means **healthy but not accepting new traffic** — not "down" or "bad".
+Standby means **healthy but not accepting new traffic**.
 
 ## Deploy order
 
