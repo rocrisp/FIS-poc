@@ -46,24 +46,54 @@ When the GUI says **“Submariner mesh down”**, it’s pretending the branch-t
 
 ---
 
-## What changed in the arbitrator?
+## Arbitrator side by side (AP vs AA)
 
-Almost nothing about *how it watches the clusters*.  
-The change is the **rule** it applies:
+Same job: watch ACM + [Submariner](#mesh), answer “may this site take payments?”  
+Different rule in `datacenter/resolver.go`.
 
-| Situation | Active-passive says | Active-active says |
-|-----------|---------------------|--------------------|
-| Both sites healthy | Cluster1 open, cluster2 closed | **Both open** |
-| Sites can’t talk to each other ([mesh down](#mesh)) | Still only one open | **Both stay open** (each is a “home site”; copies may lag) |
-| One site is dead | The other opens | The other opens (same idea — “sole active”) |
-| Sites can’t reach head office | (weak / stale) | Prefer **cluster1** open; cluster2 closed |
+| | Active-passive arbitrator | Active-active arbitrator |
+|--|---------------------------|--------------------------|
+| Folder / deploy name | `akka-split-brain-arbitrator` | `arbitrator-active-active` → `fis-arbitrator-active-active` |
+| Lab URL | [AP arbitrator](https://akka-split-brain-arbitrator-open-cluster-management.apps.rose-fis.opdev.io) | [AA arbitrator](https://fis-arbitrator-active-active-open-cluster-management.apps.rose-fis.opdev.io) |
+| Decision rule | Pick **one** winner (priority list) | Every **reachable** site may accept |
+| Healthy cluster1 | `active`, `acceptTraffic=true` | `active`, `acceptTraffic=true` |
+| Healthy cluster2 | `standby`, `acceptTraffic=false` | `active`, `acceptTraffic=true` |
+| [Mesh down](#mesh) | Still **one** writer (priority stays) | **Both** stay writers (home sites; sync may lag) |
+| One site dead | Peer becomes the only active | Peer becomes **sole active** (same idea, clearer labels) |
+| Hub unreachable | No dedicated mode | **New:** cluster1 sole writer; cluster2 standby |
+| Conflict control | Built in (only one open) | Not in arbitrator — payment app uses home affinity |
 
-So the main code change is in `datacenter/resolver.go`:  
-**“only the winner accepts” → “every healthy site accepts.”**
+### What each site hears (healthy)
 
-A few new fields tell the payment apps about that (who’s open, who’s alone, who’s preferred if the hub is gone). The GUI also got a **hub unreachable** button for AA.
+```text
+ACTIVE-PASSIVE                         ACTIVE-ACTIVE
+─────────────────                      ─────────────────
+cluster1: OPEN                         cluster1: OPEN
+cluster2: CLOSED (standby)             cluster2: OPEN
+```
 
-What stayed the same: watching ACM/[Submariner](#mesh), storing state, health APIs, traffic log.
+### Failure buttons (GUI)
+
+| Button | Active-passive | Active-active |
+|--------|----------------|---------------|
+| Clear (live) | Use real ACM/Submariner | Same |
+| Submariner [mesh down](#mesh) | One site stays open | Both stay open as home sites |
+| Mark site unreachable | Peer becomes active | Peer becomes sole active |
+| Hub unreachable | — (not present) | cluster1 only |
+
+### Extra AA fields (AP does not have these)
+
+| Field | Meaning |
+|-------|---------|
+| `activePeers` | Which sites may write right now |
+| `soleActive` / `soleActiveSite` | Only one writer left |
+| `writeMode` | `active-active` or `sole-active` |
+| `fallbackActive` | Preferred writer if hubs lose the hub (`cluster1-fis`) |
+| `mode: "active-active"` | Marks this as the AA arbitrator |
+
+### What did **not** change
+
+Watching ACM/[Submariner](#mesh), state store, `/api/v1/state` / overview / health / traffic routes, traffic log.
 
 ---
 

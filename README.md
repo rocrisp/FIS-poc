@@ -35,6 +35,20 @@ Architecture (Mermaid + tech map): [docs/ARCHITECTURE-README.md](docs/ARCHITECTU
 
 ---
 
+## Arbitrator difference (side by side)
+
+| | Active-passive | Active-active |
+|--|----------------|---------------|
+| Healthy | Only **one** site open (other standby) | **Both** sites open |
+| Mesh down | Still one open | Both stay open (home sites) |
+| One site dead | Peer becomes active | Peer becomes sole active |
+| Hub unreachable | No dedicated mode | cluster1 only |
+| Conflict control | Built in (single writer) | Payment app (home affinity) |
+
+Full table + fields: [docs/ACTIVE-ACTIVE-VS-ACTIVE-PASSIVE.md](docs/ACTIVE-ACTIVE-VS-ACTIVE-PASSIVE.md#arbitrator-side-by-side-ap-vs-aa)
+
+---
+
 ## Repo layout
 
 | Path | Purpose |
