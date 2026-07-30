@@ -13,6 +13,28 @@ Active-active details: [docs/ACTIVE-ACTIVE.md](docs/ACTIVE-ACTIVE.md)
 AP vs AA (arbitrator + apps): [docs/ACTIVE-ACTIVE-VS-ACTIVE-PASSIVE.md](docs/ACTIVE-ACTIVE-VS-ACTIVE-PASSIVE.md)  
 Architecture (Mermaid + tech map): [docs/ARCHITECTURE-README.md](docs/ARCHITECTURE-README.md)
 
+---
+
+## Lab URLs (open these)
+
+### Active-passive
+
+| What | URL |
+|------|-----|
+| **Arbitrator (hub GUI)** | https://akka-split-brain-arbitrator-open-cluster-management.apps.rose-fis.opdev.io |
+| **Payment hub — cluster1** | https://payment-hub-payment-hub.apps.cluster1-fis.opdev.io |
+| **Payment hub — cluster2** | https://payment-hub-payment-hub.apps.cluster2-fis.opdev.io |
+
+### Active-active
+
+| What | URL |
+|------|-----|
+| **Arbitrator (hub GUI)** | https://fis-arbitrator-active-active-open-cluster-management.apps.rose-fis.opdev.io |
+| **Payment hub — cluster1** | https://payment-hub-aa-payment-hub-aa.apps.cluster1-fis.opdev.io |
+| **Payment hub — cluster2** | https://payment-hub-aa-payment-hub-aa.apps.cluster2-fis.opdev.io |
+
+---
+
 ```text
                     rose-fis (ACM hub)
          AP arbitrator              AA arbitrator
@@ -60,13 +82,7 @@ export ARBITRATOR_URL="https://$(oc --kubeconfig "$HUB_KUBECONFIG" -n open-clust
 ./scripts/deploy-payment-hub.sh cluster2-fis
 ```
 
-### AP lab URLs
-
-| Component | URL |
-|-----------|-----|
-| Arbitrator | `https://akka-split-brain-arbitrator-open-cluster-management.apps.rose-fis.opdev.io` |
-| Active payment-hub | `https://payment-hub-payment-hub.apps.cluster1-fis.opdev.io` |
-| Standby payment-hub | `https://payment-hub-payment-hub.apps.cluster2-fis.opdev.io` |
+Lab URLs: see [Lab URLs (open these)](#lab-urls-open-these) at the top.
 
 ### AP failover walkthrough
 
@@ -96,6 +112,8 @@ export ARBITRATOR_AA_URL="https://$(oc --kubeconfig "$HUB_KUBECONFIG" -n open-cl
 ARBITRATOR_URL="$ARBITRATOR_AA_URL" ./scripts/deploy-payment-hub-aa.sh cluster1-fis
 ARBITRATOR_URL="$ARBITRATOR_AA_URL" ./scripts/deploy-payment-hub-aa.sh cluster2-fis
 ```
+
+Lab URLs: see [Lab URLs (open these)](#lab-urls-open-these) at the top.
 
 ### AA affinity (payer `from`)
 
