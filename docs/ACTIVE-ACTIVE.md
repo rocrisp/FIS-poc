@@ -92,3 +92,5 @@ ARBITRATOR_URL="$ARBITRATOR_AA_URL" ./scripts/deploy-payment-hub-aa.sh cluster2-
 ## Why not stretched Akka Cluster?
 
 Cross-site Akka Cluster active-active across distant OpenShift SNOs is fragile (gossip RTT, split-brain, membership). This PoC uses **two independent site processes**, hub fencing, async Kafka, and **payer affinity** for conflict avoidance.
+
+How **shared-state stretched-cluster** AA works, and what happens on **split brain**, vs this PoC: [STRETCHED-CLUSTER-SPLIT-BRAIN.md](./STRETCHED-CLUSTER-SPLIT-BRAIN.md).

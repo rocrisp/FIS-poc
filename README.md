@@ -59,6 +59,7 @@ Full table + fields: [docs/ACTIVE-ACTIVE-VS-ACTIVE-PASSIVE.md](docs/ACTIVE-ACTIV
 | `payment-hub-active-active/` | **Active-active** payment UI + account affinity |
 | `docs/ACTIVE-ACTIVE.md` | AA behavior, affinity, deploy |
 | `docs/ACTIVE-ACTIVE-VS-ACTIVE-PASSIVE.md` | What changed in the arbitrator for AA + supporting apps |
+| `docs/STRETCHED-CLUSTER-SPLIT-BRAIN.md` | Shared-state stretched AA + what split brain does |
 | `docs/ARCHITECTURE-README.md` | How the AP stack works (diagrams) |
 | `docs/KAFKA-MIRRORMAKER2.md` | Kafka listeners, MM2 replication |
 | `docs/EDGE-CASES.md` | Edge-case checklist (AP) |

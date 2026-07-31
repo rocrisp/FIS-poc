@@ -143,4 +143,6 @@ Without the AA payment app, flipping the arbitrator to “both open” would be 
 **Payment app — home site + failover:**  
 `payment-hub-active-active/`
 
-More detail (deploy, buttons, URLs): [ACTIVE-ACTIVE.md](./ACTIVE-ACTIVE.md)
+More detail (deploy, buttons, URLs): [ACTIVE-ACTIVE.md](./ACTIVE-ACTIVE.md)  
+
+Shared-state stretched cluster + split brain (vs this PoC): [STRETCHED-CLUSTER-SPLIT-BRAIN.md](./STRETCHED-CLUSTER-SPLIT-BRAIN.md)
