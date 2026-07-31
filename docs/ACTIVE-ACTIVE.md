@@ -41,7 +41,8 @@ Overview fields:
 4. **Hub unreachable** (local policy — sites cannot ask the referee):
    - `cluster1-fis` becomes sole active (`hub_unreachable_fallback_active`)
    - `cluster2-fis` refuses (`hub_unreachable_cluster1_active`) until the hub returns
-5. Kafka/MM2 + ledger UI same as the AP demo (separate consumer group).
+5. **Ledger catch-up gate:** even when `acceptTraffic=true`, refuse payments until Kafka rebuild finishes (`ledgerReady`). Re-arms after fencing. See [CATCH-UP-AND-FENCE-EPOCH.md](./CATCH-UP-AND-FENCE-EPOCH.md).
+6. Kafka/MM2 + ledger UI same as the AP demo (separate consumer group).
 
 Examples: `alice`/`bob` on cluster1; `nancy`/`oscar` on cluster2 (when both active).
 

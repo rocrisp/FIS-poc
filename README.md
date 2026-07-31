@@ -60,6 +60,7 @@ Full table + fields: [docs/ACTIVE-ACTIVE-VS-ACTIVE-PASSIVE.md](docs/ACTIVE-ACTIV
 | `docs/ACTIVE-ACTIVE.md` | AA behavior, affinity, deploy |
 | `docs/ACTIVE-ACTIVE-VS-ACTIVE-PASSIVE.md` | What changed in the arbitrator for AA + supporting apps |
 | `docs/STRETCHED-CLUSTER-SPLIT-BRAIN.md` | Shared-state stretched AA + what split brain does |
+| `docs/CATCH-UP-AND-FENCE-EPOCH.md` | Ledger catch-up gate (phase 1) + hub fence epoch (phase 2) |
 | `docs/ARCHITECTURE-README.md` | How the AP stack works (diagrams) |
 | `docs/KAFKA-MIRRORMAKER2.md` | Kafka listeners, MM2 replication |
 | `docs/EDGE-CASES.md` | Edge-case checklist (AP) |

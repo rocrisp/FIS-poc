@@ -79,13 +79,15 @@
       "mode=" + (h.mode || "active-active"),
       "writeMode=" + (h.writeMode || "—"),
       "acceptTraffic=" + !!h.acceptTraffic,
+      "ledgerReady=" + !!h.ledgerReady,
       h.soleActive ? "soleActive" : null,
       h.hubReachable === false ? "hubUnreachable" : null,
+      h.catchUpReason && !h.ledgerReady ? "catchUp=" + h.catchUpReason : null,
       h.reason ? "reason=" + h.reason : null,
       peers ? "peers=" + peers : null,
     ].filter(Boolean);
     sub.textContent = bits.join(" · ");
-    submitBtn.disabled = !h.acceptTraffic;
+    submitBtn.disabled = !(h.acceptTraffic && h.ledgerReady);
     const fromInput = form.querySelector('input[name="from"]');
     if (fromInput && !fromInput.dataset.autohome) {
       fromInput.value = h.cluster === "cluster2-fis" ? "oscar" : "alice";
@@ -95,6 +97,9 @@
       formHint.textContent = h.reason === "hub_unreachable_cluster1_active"
         ? "Hub unreachable — cluster1 is sole active until the hub returns."
         : "This site is not accepting payments (" + (h.reason || "fenced") + ").";
+    } else if (!h.ledgerReady) {
+      formHint.textContent = "Rebuilding ledger from Kafka — payments blocked until catch-up finishes (" +
+        (h.catchUpReason || "catching_up") + ").";
     } else if (h.anyPayer || h.soleActive) {
       formHint.textContent = "Sole active writer — any payer accepted on this site.";
     } else if (h.cluster === "cluster2-fis") {

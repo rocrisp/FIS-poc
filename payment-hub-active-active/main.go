@@ -1,9 +1,13 @@
 // Payment hub (active-active): independent site process that:
 // 1) polls the ACM active-active arbitrator (both healthy sites acceptTraffic=true)
-// 2) accepts payments only when acceptTraffic=true AND the payer's home site matches this cluster
+// 2) accepts payments only when acceptTraffic=true AND ledger catch-up is complete
+//    AND the payer's home site matches this cluster (unless sole-active / anyPayer)
 // 3) writes lifecycle events to local Kafka for MM2 sync to the peer site
 // 4) consumes local + mirrored Kafka topics so both sites show the same ledger
 // 5) serves a small site dashboard UI
+//
+// Safe rule: a site that was fenced/down must not accept new payments until Kafka
+// catch-up finishes (ledgerReady). See docs/CATCH-UP-AND-FENCE-EPOCH.md.
 package main
 
 import (
@@ -250,7 +254,9 @@ func (s *siteRole) policy() (accept, anyPayer, hubOK, sole bool, writeMode, reas
 	return s.acceptTraffic, s.anyPayer, s.hubReachable, s.soleActive, s.writeMode, s.reason
 }
 
-func (s *siteRole) update(st arbitratorState) {
+// update applies arbitrator state. fenced is true when this site must not take
+// payments (acceptTraffic false) — callers should Invalidate the catch-up gate.
+func (s *siteRole) update(st arbitratorState) (fenced bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.hubReachable = st.Simulation.Mode != "hub-down"
@@ -274,6 +280,7 @@ func (s *siteRole) update(st arbitratorState) {
 	s.fallbackActive = st.Partition.FallbackActive
 	// When the hub says this site is the only writer, accept any payer.
 	s.anyPayer = s.acceptTraffic && s.soleActive
+	return !s.acceptTraffic
 }
 
 // applyHubUnreachableFallback: payment hubs cannot reach the arbitrator.
@@ -336,11 +343,13 @@ func main() {
 	events := newEventLog()
 	balances := newLedger(floatOr("STARTING_BALANCE", 1000))
 	traffic := &trafficLog{}
+	gate := newCatchUpGate(durationOr("CATCH_UP_IDLE", 2*time.Second))
+	gate.Invalidate("catching_up_starting")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	insecureTLS := envOr("ARBITRATOR_INSECURE_SKIP_VERIFY", "true") == "true"
-	go pollArbitrator(ctx, arbitratorURL, clusterName, fallbackActive, role, traffic, pollEvery, insecureTLS)
-	go consumeTransactions(ctx, kafkaBootstrap, clusterName, peerCluster, events, balances)
+	go pollArbitrator(ctx, arbitratorURL, clusterName, fallbackActive, role, gate, traffic, pollEvery, insecureTLS)
+	go consumeTransactions(ctx, kafkaBootstrap, clusterName, peerCluster, events, balances, gate)
 
 	webFS, err := fs.Sub(uiRoot, "web")
 	if err != nil {
@@ -361,6 +370,7 @@ func main() {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		r, accept, reason, partitioned, peers, sim := role.snapshot()
 		_, anyPayer, hubOK, sole, writeMode, _ := role.policy()
+		ledgerReady, catchReason, _, catchParts, catchDone := gate.snapshot()
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":         "ok",
 			"mode":           "active-active",
@@ -368,6 +378,10 @@ func main() {
 			"peerCluster":    peerCluster,
 			"role":           r,
 			"acceptTraffic":  accept,
+			"ledgerReady":    ledgerReady,
+			"catchUpReason":  catchReason,
+			"catchUpParts":   catchParts,
+			"catchUpDone":    catchDone,
 			"reason":         reason,
 			"partitioned":    partitioned,
 			"activePeers":    peers,
@@ -424,6 +438,7 @@ func main() {
 	})
 	mux.HandleFunc("POST /api/v1/payments", func(w http.ResponseWriter, r *http.Request) {
 		accept, anyPayer, _, _, _, reason := role.policy()
+		ledgerReady, catchReason, _, _, _ := gate.snapshot()
 		var req paymentRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_body"})
@@ -441,6 +456,23 @@ func main() {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 				"error":   "not_accepting",
 				"message": reason,
+				"cluster": clusterName,
+			})
+			return
+		}
+		if !ledgerReady {
+			events.add(siteEvent{
+				TS:     time.Now().UTC().Format(time.RFC3339),
+				Status: "refused",
+				Origin: "ui",
+				Source: clusterName,
+				Detail: catchReason,
+				Amount: req.Amount,
+			})
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error":   "catching_up",
+				"message": "site must finish Kafka ledger catch-up before accepting payments",
+				"detail":  catchReason,
 				"cluster": clusterName,
 			})
 			return
@@ -566,7 +598,7 @@ func consumeTopics(clusterName, peer string) []string {
 	return topics
 }
 
-func consumeTransactions(ctx context.Context, bootstrap, clusterName, peer string, events *eventLog, balances *ledger) {
+func consumeTransactions(ctx context.Context, bootstrap, clusterName, peer string, events *eventLog, balances *ledger, gate *catchUpGate) {
 	topics := consumeTopics(clusterName, peer)
 	cfg := sarama.NewConfig()
 	cfg.Consumer.Return.Errors = true
@@ -581,6 +613,7 @@ func consumeTransactions(ctx context.Context, bootstrap, clusterName, peer strin
 	// so OffsetOldest re-reads full topic history. Otherwise a rolling deploy commits
 	// offsets on pod A and pod B resumes mid-stream with an empty ledger.
 	if envOr("RESET_LEDGER_ON_START", "true") == "true" {
+		gate.Invalidate("catching_up_rebuild")
 		if err := resetConsumerGroup(brokers, group, cfg); err != nil {
 			log.Printf("kafka reset consumer group %s: %v (continuing)", group, err)
 		} else {
@@ -591,12 +624,12 @@ func consumeTransactions(ctx context.Context, bootstrap, clusterName, peer strin
 	client, err := sarama.NewConsumerGroup(brokers, group, cfg)
 	if err != nil {
 		log.Printf("kafka consumer group: %v (retrying)", err)
-		go retryConsume(ctx, bootstrap, clusterName, peer, events, balances)
+		go retryConsume(ctx, bootstrap, clusterName, peer, events, balances, gate)
 		return
 	}
 	defer client.Close()
 
-	handler := &txHandler{cluster: clusterName, events: events, balances: balances}
+	handler := &txHandler{cluster: clusterName, events: events, balances: balances, gate: gate}
 	log.Printf("consuming kafka topics: %v group=%s", topics, group)
 	for {
 		if err := client.Consume(ctx, topics, handler); err != nil {
@@ -622,13 +655,13 @@ func resetConsumerGroup(brokers []string, group string, cfg *sarama.Config) erro
 	return nil
 }
 
-func retryConsume(ctx context.Context, bootstrap, clusterName, peer string, events *eventLog, balances *ledger) {
+func retryConsume(ctx context.Context, bootstrap, clusterName, peer string, events *eventLog, balances *ledger, gate *catchUpGate) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(5 * time.Second):
-			consumeTransactions(ctx, bootstrap, clusterName, peer, events, balances)
+			consumeTransactions(ctx, bootstrap, clusterName, peer, events, balances, gate)
 			return
 		}
 	}
@@ -638,17 +671,32 @@ type txHandler struct {
 	cluster  string
 	events   *eventLog
 	balances *ledger
+	gate     *catchUpGate
 }
 
 func (h *txHandler) Setup(sarama.ConsumerGroupSession) error   { return nil }
 func (h *txHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
 
 func (h *txHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	for msg := range claim.Messages() {
-		h.handleMessage(msg)
-		sess.MarkMessage(msg, "")
+	h.gate.notePartition(claim.Topic(), claim.Partition(), claim.InitialOffset(), claim.HighWaterMarkOffset())
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-sess.Context().Done():
+			return nil
+		case <-ticker.C:
+			// Refresh HWM; if Invalidate cleared parts, re-register this claim.
+			h.gate.notePartition(claim.Topic(), claim.Partition(), claim.InitialOffset(), claim.HighWaterMarkOffset())
+		case msg, ok := <-claim.Messages():
+			if !ok {
+				return nil
+			}
+			h.handleMessage(msg)
+			h.gate.noteOffset(msg.Topic, msg.Partition, msg.Offset, claim.HighWaterMarkOffset())
+			sess.MarkMessage(msg, "")
+		}
 	}
-	return nil
 }
 
 func (h *txHandler) handleMessage(msg *sarama.ConsumerMessage) {
@@ -711,12 +759,13 @@ func (h *txHandler) handleMessage(msg *sarama.ConsumerMessage) {
 	})
 }
 
-func pollArbitrator(ctx context.Context, baseURL, cluster, fallbackActive string, role *siteRole, traffic *trafficLog, every time.Duration, insecureTLS bool) {
+func pollArbitrator(ctx context.Context, baseURL, cluster, fallbackActive string, role *siteRole, gate *catchUpGate, traffic *trafficLog, every time.Duration, insecureTLS bool) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if insecureTLS {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // demo against OpenShift edge routes
 	}
 	client := &http.Client{Timeout: 5 * time.Second, Transport: transport}
+	var wasAccept bool
 	fetch := func() {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/v1/state", nil)
 		if err != nil {
@@ -727,6 +776,13 @@ func pollArbitrator(ctx context.Context, baseURL, cluster, fallbackActive string
 		resp, err := client.Do(req)
 		if err != nil {
 			role.applyHubUnreachableFallback(cluster, fallbackActive)
+			accept, _, _, _, _, _ := role.policy()
+			if !accept {
+				gate.Invalidate("catching_up_fenced")
+			} else if !wasAccept && accept {
+				gate.Invalidate("catching_up_after_fence")
+			}
+			wasAccept = accept
 			traffic.add("in", "ERROR "+err.Error()+" → hub-unreachable fallback (cluster1 sole active)")
 			log.Printf("arbitrator poll error: %v — fallback active=%s", err, fallbackActive)
 			return
@@ -734,17 +790,39 @@ func pollArbitrator(ctx context.Context, baseURL, cluster, fallbackActive string
 		defer resp.Body.Close()
 		if resp.StatusCode >= 500 {
 			role.applyHubUnreachableFallback(cluster, fallbackActive)
+			accept, _, _, _, _, _ := role.policy()
+			if !accept {
+				gate.Invalidate("catching_up_fenced")
+			} else if !wasAccept && accept {
+				gate.Invalidate("catching_up_after_fence")
+			}
+			wasAccept = accept
 			traffic.add("in", fmt.Sprintf("HTTP %d → hub-unreachable fallback", resp.StatusCode))
 			return
 		}
 		var st arbitratorState
 		if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
 			role.applyHubUnreachableFallback(cluster, fallbackActive)
+			accept, _, _, _, _, _ := role.policy()
+			if !accept {
+				gate.Invalidate("catching_up_fenced")
+			} else if !wasAccept && accept {
+				gate.Invalidate("catching_up_after_fence")
+			}
+			wasAccept = accept
 			traffic.add("in", fmt.Sprintf("HTTP %d decode_error: %v → hub-unreachable fallback", resp.StatusCode, err))
 			log.Printf("arbitrator decode error: %v", err)
 			return
 		}
-		role.update(st)
+		fenced := role.update(st)
+		accept, _, _, _, _, _ := role.policy()
+		if fenced {
+			gate.Invalidate("catching_up_fenced")
+		} else if !wasAccept && accept {
+			// Returned to open: must re-prove catch-up before taking money.
+			gate.Invalidate("catching_up_after_fence")
+		}
+		wasAccept = accept
 		traffic.add("in", fmt.Sprintf(
 			"HTTP %d ← role=%s accept=%v sole=%v writeMode=%s reason=%s peers=%v sim=%s",
 			resp.StatusCode, st.Datacenter.Role, st.Datacenter.AcceptTraffic, st.Datacenter.SoleActive,
